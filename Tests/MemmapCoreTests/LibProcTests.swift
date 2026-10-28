@@ -10,11 +10,12 @@ import Testing
   #expect(parsed.env == ["PWD": "/Users/example/project", "CLAUDE_CODE_SESSION_ID": "abc", "XPC_SERVICE_NAME": "0"])
 }
 
-@Test func procArgs2SurvivesGarbageAndHugeArgs() {
+@Test func procArgs2SurvivesGarbageAndHugeArgs() throws {
   #expect(parseProcArgs2([1, 2]) == nil)
   var buf: [UInt8] = withUnsafeBytes(of: Int32(1).littleEndian, Array.init) + Array("/x".utf8) + [0, 0xff, 0xfe] + Array(repeating: UInt8(ascii: "a"), count: 6000) + [0]
   buf += [0]
-  #expect((parseProcArgs2(buf)?.args.count ?? 0) <= 4000)
+  let parsed = try #require(parseProcArgs2(buf))
+  #expect(parsed.args.count == 4000)
 }
 
 @Test func readsOwnProcess() {
@@ -29,4 +30,10 @@ import Testing
 @Test func vanishedProcessReturnsNil() {
   let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/true"); try! p.run(); p.waitUntilExit()
   #expect(LibProc.bsdInfo(p.processIdentifier) == nil && LibProc.procArgs(p.processIdentifier) == nil)
+}
+
+@Test func listsEveryPID() {
+  let pids = LibProc.listPIDs()
+  #expect(pids.contains(1))
+  #expect(abs(pids.count - Int(proc_listallpids(nil, 0))) <= 50)
 }

@@ -5,9 +5,9 @@ enum LibProc {
     let count = proc_listallpids(nil, 0)
     guard count > 0 else { return [] }
     var pids = [Int32](repeating: 0, count: Int(count) * 2)
-    let bytes = proc_listallpids(&pids, Int32(pids.count * MemoryLayout<Int32>.size))
-    guard bytes > 0 else { return [] }
-    return pids.prefix(Int(bytes) / MemoryLayout<Int32>.size).filter { $0 > 0 }
+    let filled = proc_listallpids(&pids, Int32(pids.count * MemoryLayout<Int32>.size))
+    guard filled > 0 else { return [] }
+    return pids.prefix(Int(filled)).filter { $0 > 0 }
   }
 
   static func bsdInfo(_ pid: Int32) -> (ppid: Int32, uid: UInt32)? {
