@@ -14,7 +14,7 @@ public struct PSRow: Sendable, Hashable {
   }
 }
 
-private let maxArgsChars = 4000
+let maxArgsChars = 4000
 
 public func parseSize(_ text: String) -> Int64 {
   let digits = text.prefix { $0.isASCII && ($0.isNumber || $0 == ".") }
