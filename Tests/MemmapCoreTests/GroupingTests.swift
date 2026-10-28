@@ -2,6 +2,16 @@ import Testing
 
 @testable import MemmapCore
 
+private func leafPids(_ node: TreeNode) -> [Int32] {
+  guard node.children.isEmpty else { return node.children.flatMap(leafPids) }
+  guard let pid = node.id.split(separator: ":").last.flatMap({ Int32($0) }) else { return [] }
+  return [pid]
+}
+
+private func expectEachPidOnce(_ tree: TreeNode, _ recs: [ProcessRecord]) {
+  #expect(leafPids(tree).sorted() == recs.map(\.pid).sorted())
+}
+
 @Test func measuresEachMode() {
   var p = rec(pid: 1, ppid: 0, rss: 100)
   p.footprint = 150
@@ -18,11 +28,13 @@ import Testing
 }
 
 @Test func processTreeAddsItselfChildAndSurvivesCycles() {
-  let tree = buildTree(
-    [
-      rec(pid: 1, ppid: 0, rss: 10), rec(pid: 2, ppid: 1, rss: 20),
-      rec(pid: 3, ppid: 3, rss: 5), rec(pid: 0, ppid: 0, rss: 1),
-    ], grouping: .processTree, mode: .rss, includeCompressed: false)
+  let recs = [
+    rec(pid: 1, ppid: 0, rss: 10), rec(pid: 2, ppid: 1, rss: 20),
+    rec(pid: 3, ppid: 3, rss: 5), rec(pid: 0, ppid: 0, rss: 1),
+    rec(pid: 7, ppid: 8, rss: 2), rec(pid: 8, ppid: 7, rss: 3),
+  ]
+  let tree = buildTree(recs, grouping: .processTree, mode: .rss, includeCompressed: false)
+  expectEachPidOnce(tree, recs)
   let p1 = tree.children.first { $0.id == "pid:0" }!.children.first { $0.id == "pid:1" }!
   #expect(p1.children.map(\.id) == ["self:1", "pid:2"] && p1.children[0].name.hasSuffix("(itself)"))
   #expect(tree.children.contains { $0.id == "pid:3" } && tree.children.contains { $0.id == "pid:0" })
@@ -61,7 +73,9 @@ import Testing
   #expect(session.name == "Claude session 0123abcd · example/project")
   let root = session.children.first { $0.id == "pid:100" }!
   #expect(Set(root.children.map(\.id)) == ["self:100", "pid:101", "pid:102"])
-  #expect(tree.children.contains { $0.id == "pid:103" || $0.name == "Example" })
+  #expect(tree.children.contains { $0.id == "pid:103" })
+  #expect(!tree.children.contains { $0.id == "app:Example" })
+  expectEachPidOnce(tree, recs)
   #expect(!session.children.contains { $0.id == "pid:103" })
 }
 

@@ -57,6 +57,17 @@ private func forest(_ procs: [ProcessRecord], attachTo: Int32?, leaf: LeafMaker)
       }
     if let parent { kids[parent, default: []].append(p) } else { tops.append(p) }
   }
+  var reached = Set<Int32>()
+  func reach(_ pid: Int32) {
+    guard reached.insert(pid).inserted else { return }
+    for child in kids[pid] ?? [] { reach(child.pid) }
+  }
+  for top in tops { reach(top.pid) }
+  for p in procs where !reached.contains(p.pid) {
+    kids[p.ppid]?.removeAll { $0.pid == p.pid }
+    tops.append(p)
+    reach(p.pid)
+  }
   func make(_ p: ProcessRecord, _ visited: Set<Int32>) -> TreeNode {
     guard let children = kids[p.pid] else { return leaf(p, "pid:\(p.pid)", nil) }
     let visited = visited.union([p.pid])
