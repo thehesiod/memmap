@@ -20,7 +20,11 @@ _collect_lock = threading.Lock()
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         url = urlparse(self.path)
-        if url.path == "/":
+        port = self.server.server_address[1]
+        if self.headers.get("Host") not in {f"{HOST}:{port}", f"localhost:{port}"}:
+            # Blocks DNS rebinding: another site's hostname resolving to 127.0.0.1 could otherwise read process data.
+            self._send(HTTPStatus.MISDIRECTED_REQUEST, "text/plain", b"unexpected Host header")
+        elif url.path == "/":
             self._send(HTTPStatus.OK, "text/html; charset=utf-8", INDEX.read_bytes())
         elif url.path == "/api/snapshot":
             split = parse_qs(url.query).get("split") == ["1"]
