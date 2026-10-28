@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>memmap</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js" integrity="sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i" crossorigin="anonymous"></script>
+<style>
+  :root {
+    --bg: #f7f7f8; --fg: #1d1d1f; --muted: #6e6e73; --line: #d2d2d7; --panel: #ffffff;
+    --accent: #2563eb; --accent-fg: #ffffff; --hatch: rgba(0,0,0,.28); --box-fg: #111;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161618; --fg: #f2f2f2; --muted: #9a9aa0; --line: #3a3a3e; --panel: #1f1f22;
+      --accent: #3b82f6; --accent-fg: #ffffff; --hatch: rgba(0,0,0,.4); --box-fg: #111;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--fg); font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; display: flex; flex-direction: column; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .seg button { border: 0; background: transparent; color: var(--fg); padding: 4px 10px; cursor: pointer; font: inherit; }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button.on { background: var(--accent); color: var(--accent-fg); }
+  .seg button:disabled { color: var(--muted); cursor: not-allowed; }
+  input[type=number] { width: 56px; font: inherit; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 4px; padding: 2px 4px; }
+  .btn { font: inherit; border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  .status { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .crumbs { padding: 6px 12px; color: var(--muted); }
+  .crumbs a { color: var(--accent); cursor: pointer; text-decoration: none; }
+  .main { flex: 1; display: flex; min-height: 0; }
+  #map { flex: 1; position: relative; margin: 0 4px 4px 8px; overflow: hidden; }
+  .node { position: absolute; overflow: hidden; border-radius: 2px; color: var(--box-fg); font-size: 11px; line-height: 13px; padding: 1px 3px; cursor: pointer; white-space: nowrap; }
+  .node.group { border: 1px solid rgba(0,0,0,.35); }
+  .node.leaf { border: 1px solid rgba(0,0,0,.15); }
+  .node.uninspected { outline: 1px dashed rgba(0,0,0,.5); outline-offset: -3px; }
+  .node.hover { box-shadow: inset 0 0 0 2px var(--accent); }
+  .node.pinned { box-shadow: inset 0 0 0 3px var(--accent), inset 0 0 0 5px var(--panel); }
+  .side .sub a { color: var(--accent); cursor: pointer; text-decoration: underline; }
+  .node .label { font-weight: 600; text-overflow: ellipsis; overflow: hidden; }
+  .node .hatch { position: absolute; left: 0; right: 0; bottom: 0; background-image: repeating-linear-gradient(45deg, var(--hatch) 0 3px, transparent 3px 7px); pointer-events: none; }
+  .side { width: 250px; border-left: 1px solid var(--line); padding: 10px 12px; background: var(--panel); overflow-y: auto; }
+  .side h3 { margin: 0 0 4px; font-size: 14px; word-break: break-word; }
+  .side .sub { color: var(--muted); margin-bottom: 10px; word-break: break-all; white-space: pre-line; }
+  .side .cmd { margin: 0 0 10px; padding: 6px; max-height: 180px; overflow-y: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-all; user-select: text; }
+  .side table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  .side td { padding: 2px 0; }
+  .side td.r { text-align: right; }
+  .side .note { color: var(--muted); margin-top: 12px; font-size: 12px; }
+  .up { color: #dc2626; } .down { color: #16a34a; }
+  .error { color: #dc2626; }
+  @media (max-width: 700px) { .side { display: none; } }
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <span class="seg" id="mode">
+    <button data-v="rss">RSS</button>
+    <button data-v="split">Shared split</button>
+    <button data-v="footprint">Footprint</button>
+  </span>
+  <label><input type="checkbox" id="cmp"> include compressed</label>
+  <span>Group by <span class="seg" id="group">
+    <button data-v="tree">Process tree</button>
+    <button data-v="app">App</button>
+    <button data-v="session" title="Processes started from each Claude Code session, including ones whose parent has exited">Claude session</button>
+  </span></span>
+  <label>Refresh every <input type="number" id="interval" min="0.5" step="0.5"> s</label>
+  <button class="btn" id="pause">Pause</button>
+  <span class="status" id="status">loading…</span>
+</div>
+<div class="crumbs" id="crumbs"></div>
+<div class="main">
+  <div id="map"></div>
+  <div class="side" id="side"><div class="note">Hover a box for details. Click to pin it. Double-click a group to zoom in.</div></div>
+</div>
+<script>
+const GB = 2 ** 30;
+const fmt = b => b == null ? "—" : b >= GB ? (b / GB).toFixed(2) + " GB" : b >= 2 ** 20 ? (b / 2 ** 20).toFixed(0) + " MB" : (b / 1024).toFixed(0) + " KB";
+const fmtDelta = d => d == null || Math.abs(d) < 2 ** 20 ? "" : (d > 0 ? "+" : "−") + fmt(Math.abs(d));
+
+const store = {
+  get(k, dflt) { try { const v = localStorage.getItem("memmap." + k); return v == null ? dflt : JSON.parse(v); } catch { return dflt; } },
+  set(k, v) { try { localStorage.setItem("memmap." + k, JSON.stringify(v)); } catch {} },
+};
+
+const state = {
+  mode: store.get("mode", "rss"),
+  cmp: store.get("cmp", true),
+  group: store.get("group", "app"),
+  interval: store.get("interval", 2),
+  paused: false,
+  zoom: [],
+  snapshot: null,
+  prev: new Map(),
+  current: new Map(),
+  hoverKey: null,
+  pinnedKey: null,
+  root: null,
+  timer: null,
+};
+
+const $ = id => document.getElementById(id);
+
+function procValue(p) {
+  if (state.mode === "footprint") return p.footprint;
+  if (state.mode === "split" && p.private_resident != null) {
+    return p.private_resident + p.shared_split + (state.cmp ? p.private_compressed + p.shared_compressed_split : 0);
+  }
+  return p.rss + (state.cmp ? p.compressed : 0);
+}
+
+function procCompressed(p) {
+  if (state.mode === "footprint") return Math.min(p.compressed, p.footprint);
+  if (!state.cmp) return 0;
+  if (state.mode === "split" && p.private_resident != null) return p.private_compressed + p.shared_compressed_split;
+  return p.compressed;
+}
+
+function leaf(p, key, name) {
+  return { key, name: name ?? p.name, proc: p, value: procValue(p), compressed: procCompressed(p) };
+}
+
+function forest(procs, attachTo = null) {
+  const pids = new Set(procs.map(p => p.pid));
+  const kids = new Map();
+  const tops = [];
+  for (const p of procs) {
+    const parent = p.ppid !== p.pid && pids.has(p.ppid) ? p.ppid : attachTo !== null && p.pid !== attachTo ? attachTo : null;
+    if (parent === null) tops.push(p);
+    else {
+      if (!kids.has(parent)) kids.set(parent, []);
+      kids.get(parent).push(p);
+    }
+  }
+  const make = p => {
+    const children = kids.get(p.pid);
+    if (!children) return leaf(p, "pid:" + p.pid);
+    return {
+      key: "pid:" + p.pid, name: p.name, proc: p,
+      children: [leaf(p, "self:" + p.pid, p.name + " (itself)"), ...children.map(make)],
+    };
+  };
+  return tops.map(make);
+}
+
+function buildTree(procs) {
+  return { key: "root", name: "All processes", children: forest(procs) };
+}
+
+function shortPath(path) {
+  return path ? path.split("/").filter(Boolean).slice(-2).join("/") : "";
+}
+
+function buildSessions(procs) {
+  const byPid = new Map(procs.map(p => [p.pid, p]));
+  const carriers = new Map();
+  for (const p of procs) {
+    if (!p.session) continue;
+    if (!carriers.has(p.session)) carriers.set(p.session, []);
+    carriers.get(p.session).push(p);
+  }
+  const rootOf = new Map();
+  for (const [session, ps] of carriers) {
+    const votes = d3.rollup(ps.filter(p => p.ppid !== 1 && byPid.get(p.ppid)?.session !== session), v => v.length, p => p.ppid);
+    const [rootPid] = [...votes].sort((a, b) => b[1] - a[1])[0] ?? [];
+    if (rootPid !== undefined && byPid.has(rootPid)) rootOf.set(session, rootPid);
+  }
+  const claimedRoots = new Map([...rootOf].map(([s, pid]) => [pid, s]));
+  const relaunchedAsApp = p => p.xpc_service?.startsWith("application.") && p.xpc_service !== byPid.get(rootOf.get(p.session))?.xpc_service;
+  const members = new Map([...carriers.keys()].map(s => [s, []]));
+  const assigned = new Set();
+  for (const p of procs) {
+    const session = claimedRoots.get(p.pid) ?? (p.session && !relaunchedAsApp(p) ? p.session : null);
+    if (!session) continue;
+    members.get(session).push(p);
+    assigned.add(p.pid);
+  }
+  const groups = [...members].filter(([, ps]) => ps.length).map(([session, ps]) => {
+    const rootPid = rootOf.get(session) ?? null;
+    const top = ps.filter(p => p.cwd).sort((a, b) => (b.ppid === rootPid) - (a.ppid === rootPid))[0];
+    const label = `Claude session ${session.slice(0, 8)}${top ? " · " + shortPath(top.cwd) : ""}${rootPid === null ? " (ended)" : ""}`;
+    return { key: "session:" + session, name: label, children: forest(ps, rootPid) };
+  });
+  const rest = buildApps(procs.filter(p => !assigned.has(p.pid))).children;
+  return { key: "root", name: "All processes", children: [...groups, ...rest] };
+}
+
+function appOf(p, byPid) {
+  for (let cur = p, hops = 0; cur && hops < 64; cur = byPid.get(cur.ppid), hops++) {
+    if (cur.app) return cur.app;
+    if (cur.ppid === cur.pid) break;
+  }
+  return null;
+}
+
+function buildApps(procs) {
+  const byPid = new Map(procs.map(p => [p.pid, p]));
+  const groups = new Map();
+  for (const p of procs) {
+    const name = appOf(p, byPid) ?? (p.uid === 0 ? "System (root)" : p.uid < 500 ? "System services" : "Other user processes");
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push(p);
+  }
+  return {
+    key: "root", name: "All processes",
+    children: [...groups].map(([name, ps]) =>
+      ps.length === 1 ? leaf(ps[0], "pid:" + ps[0].pid) : { key: "app:" + name, name, children: ps.map(p => leaf(p, "pid:" + p.pid)) }),
+  };
+}
+
+function findPath(root, keys) {
+  const path = [root];
+  let node = root;
+  for (const k of keys) {
+    const next = node.children?.find(c => c.data.key === k);
+    if (!next) break;
+    path.push(next);
+    node = next;
+  }
+  return path;
+}
+
+function render() {
+  const snap = state.snapshot;
+  if (!snap) return;
+  const data = { tree: buildTree, app: buildApps, session: buildSessions }[state.group](snap.procs);
+  const root = d3.hierarchy(data).sum(d => d.children ? 0 : Math.max(d.value, 0)).sort((a, b) => b.value - a.value);
+  state.current = new Map();
+  root.each(n => state.current.set(n.data.key, n.value));
+  state.root = root;
+  if (state.pinnedKey && !state.current.has(state.pinnedKey)) state.pinnedKey = null;
+
+  const path = findPath(root, state.zoom);
+  state.zoom = path.slice(1).map(n => n.data.key);
+  const focus = path[path.length - 1];
+
+  $("crumbs").replaceChildren(...path.flatMap((n, i) => {
+    const el = document.createElement(i === path.length - 1 ? "span" : "a");
+    el.textContent = `${n.data.name} (${fmt(n.value)})`;
+    if (i < path.length - 1) el.onclick = () => { state.zoom = state.zoom.slice(0, i); render(); };
+    return i ? [document.createTextNode(" › "), el] : [el];
+  }));
+
+  const map = $("map");
+  const { width, height } = map.getBoundingClientRect();
+  const sub = d3.hierarchy(focus.data).sum(d => d.children ? 0 : Math.max(d.value, 0)).sort((a, b) => b.value - a.value);
+  d3.treemap().size([width, height]).paddingOuter(2).paddingTop(d => d.depth === 0 ? 0 : 15).paddingInner(1).round(true)(sub);
+
+  const color = d3.scaleOrdinal(d3.schemeTableau10);
+  let colorDepth = 1;
+  for (let n = sub; n.children?.length === 1; n = n.children[0]) colorDepth++;
+  const nodes = [];
+  for (const n of sub.descendants()) {
+    if (n.depth === 0) continue;
+    const w = n.x1 - n.x0, h = n.y1 - n.y0;
+    if (w < 2 || h < 2) continue;
+    const top = n.ancestors().find(a => a.depth === Math.min(colorDepth, n.depth));
+    const base = d3.hsl(color(top.data.key));
+    base.l = Math.min(0.9, 0.62 + 0.07 * (n.depth - 1) + (n.children ? 0 : 0.06));
+    base.s = Math.max(0.35, base.s * 0.75);
+    const el = document.createElement("div");
+    el.className = "node " + (n.children ? "group" : "leaf");
+    if (state.mode === "split" && n.data.proc && n.data.proc.private_resident == null && !n.children) el.classList.add("uninspected");
+    if (n.data.key === state.hoverKey) el.classList.add("hover");
+    if (n.data.key === state.pinnedKey) el.classList.add("pinned");
+    Object.assign(el.style, { left: n.x0 + "px", top: n.y0 + "px", width: w + "px", height: h + "px", background: base.formatHex() });
+    if (w > 36 && h > 12) {
+      const label = document.createElement("div");
+      label.className = "label";
+      label.textContent = n.children ? `${n.data.name} · ${fmt(n.value)} (${n.leaves().length})` : n.data.name;
+      el.append(label);
+      if (!n.children && h > 26) {
+        const size = document.createElement("div");
+        size.textContent = fmt(n.value);
+        el.append(size);
+      }
+    }
+    if (!n.children && n.data.compressed > 0 && n.value > 0) {
+      const hatch = document.createElement("div");
+      hatch.className = "hatch";
+      hatch.style.height = (100 * Math.min(1, n.data.compressed / n.value)) + "%";
+      el.append(hatch);
+    }
+    el.onmouseenter = ev => { ev.stopPropagation(); setHover(n, el); };
+    el.onclick = ev => {
+      ev.stopPropagation();
+      state.pinnedKey = state.pinnedKey === n.data.key ? null : n.data.key;
+      document.querySelectorAll(".node.pinned").forEach(e => e.classList.remove("pinned"));
+      if (state.pinnedKey) el.classList.add("pinned");
+      showDetails(n);
+    };
+    el.ondblclick = ev => {
+      ev.stopPropagation();
+      const target = n.children ? n : n.parent;
+      if (target.depth === 0) return;
+      state.zoom = [...state.zoom, ...target.ancestors().reverse().slice(1).map(a => a.data.key)];
+      render();
+    };
+    nodes.push(el);
+  }
+  map.replaceChildren(...nodes);
+  if (state.pinnedKey) {
+    showDetails(sub.descendants().find(d => d.data.key === state.pinnedKey) ?? root.descendants().find(d => d.data.key === state.pinnedKey));
+  } else if (state.hoverKey) {
+    const n = sub.descendants().find(d => d.data.key === state.hoverKey);
+    if (n) showDetails(n);
+  }
+  renderStatus();
+}
+
+function setHover(n, el) {
+  document.querySelectorAll(".node.hover").forEach(e => e.classList.remove("hover"));
+  el.classList.add("hover");
+  state.hoverKey = n.data.key;
+  if (!state.pinnedKey) showDetails(n);
+}
+
+function selectPid(pid) {
+  const target = state.root?.descendants().find(d => d.data.key === "pid:" + pid);
+  if (!target) return;
+  state.pinnedKey = target.data.key;
+  const keys = target.ancestors().reverse().slice(1).map(a => a.data.key);
+  const visible = keys.length > state.zoom.length && state.zoom.every((k, i) => keys[i] === k);
+  if (!visible) state.zoom = keys.slice(0, -1);
+  render();
+}
+
+function showDetails(n) {
+  const p = n.data.proc;
+  const delta = state.prev.has(n.data.key) ? n.value - state.prev.get(n.data.key) : null;
+  const rows = [[n.children && p ? "Counted here, with children" : "Counted here", fmt(n.value)]];
+  if (delta != null) rows.push(["Change since last refresh", `<span class="${delta > 0 ? "up" : "down"}">${fmtDelta(delta) || "~0"}</span>`]);
+  if (n.children) {
+    rows.push(["Processes", n.leaves().length]);
+  }
+  if (p) {
+    if (p.session) rows.push(["Claude session", p.session.slice(0, 8)]);
+    rows.push(["RSS", fmt(p.rss)], ["Compressed", fmt(p.compressed)], ["Footprint", fmt(p.footprint)]);
+    if (p.private_resident != null) {
+      rows.push(["Private resident", fmt(p.private_resident)], ["Shared resident", fmt(p.shared_resident)],
+        ["Shared, its split", fmt(p.shared_split)], ["Largest shared region also in", `${p.shared_with} other processes`]);
+    }
+  }
+  const pinned = n.data.key === state.pinnedKey;
+  $("side").innerHTML = `<h3></h3><div class="sub"></div><pre class="cmd"></pre><table>${rows.map(([k, v]) => `<tr><td>${k}</td><td class="r">${v}</td></tr>`).join("")}</table>` +
+    `<div class="note">${pinned ? "📌 Pinned. Click the box again to unpin." : "Click to pin. Double-click a group to zoom in."}</div>`;
+  $("side").querySelector("h3").textContent = n.data.name;
+  const sub = $("side").querySelector(".sub");
+  if (p) {
+    sub.append(`PID ${p.pid} · parent `);
+    if (state.snapshot.procs.some(q => q.pid === p.ppid) && p.ppid !== p.pid) {
+      const link = document.createElement("a");
+      link.textContent = p.ppid;
+      link.title = "Select the parent process";
+      link.onclick = () => selectPid(p.ppid);
+      sub.append(link);
+    } else sub.append(String(p.ppid));
+    sub.append(` · uid ${p.uid}`);
+  }
+  const cmd = $("side").querySelector(".cmd");
+  if (p?.args) cmd.textContent = p.args; else cmd.remove();
+}
+
+function renderStatus() {
+  const s = state.snapshot;
+  const sys = s.system;
+  const parts = [
+    `Used ${fmt(sys.used)} of ${fmt(sys.physical)}`,
+    `compressor ${fmt(sys.compressor)}`,
+    `swap ${fmt(sys.swap_used)} of ${fmt(sys.swap_total)}`,
+    `${s.procs.length} procs`,
+  ];
+  if (state.mode === "split") parts.push(`${s.inspected} inspected`);
+  parts.push(`${s.collect_ms} ms`);
+  if (state.paused) parts.push("paused");
+  $("status").textContent = parts.join(" · ");
+}
+
+async function refresh() {
+  clearTimeout(state.timer);
+  try {
+    const res = await fetch(`/api/snapshot?split=${state.mode === "split" ? 1 : 0}`);
+    if (!res.ok) throw new Error(res.status + " " + res.statusText);
+    state.prev = state.current;
+    state.snapshot = await res.json();
+    syncControls();
+    render();
+  } catch (e) {
+    $("status").innerHTML = `<span class="error">refresh failed: ${e.message}</span>`;
+  }
+  if (!state.paused) state.timer = setTimeout(refresh, Math.max(0.5, state.interval) * 1000);
+}
+
+function syncControls() {
+  const splitOk = state.snapshot?.split_available ?? true;
+  if (!splitOk && state.mode === "split") state.mode = "rss";
+  for (const b of $("mode").children) {
+    b.classList.toggle("on", b.dataset.v === state.mode);
+    if (b.dataset.v === "split") {
+      b.disabled = !splitOk;
+      b.title = !splitOk ? "Unavailable" : state.snapshot?.is_root
+        ? "Private memory plus an even share of each shared region"
+        : "Private memory plus an even share of each shared region. Without sudo, root-owned processes (dashed outline) show RSS";
+    }
+  }
+  for (const b of $("group").children) b.classList.toggle("on", b.dataset.v === state.group);
+  $("cmp").checked = state.mode === "footprint" ? true : state.cmp;
+  $("cmp").disabled = state.mode === "footprint";
+  $("cmp").parentElement.title = state.mode === "footprint" ? "Footprint already includes compressed memory" : "";
+  $("pause").textContent = state.paused ? "Resume" : "Pause";
+}
+
+$("mode").onclick = e => {
+  const v = e.target.dataset?.v;
+  if (!v || e.target.disabled || v === state.mode) return;
+  const needsFetch = v === "split" || state.mode === "split";
+  state.mode = v; store.set("mode", v);
+  state.current = new Map();
+  syncControls();
+  needsFetch ? refresh() : render();
+};
+$("group").onclick = e => {
+  const v = e.target.dataset?.v;
+  if (!v || v === state.group) return;
+  state.group = v; store.set("group", v);
+  state.zoom = []; state.current = new Map();
+  syncControls(); render();
+};
+$("cmp").onchange = e => { state.cmp = e.target.checked; store.set("cmp", state.cmp); state.current = new Map(); render(); };
+$("interval").value = state.interval;
+$("interval").onchange = e => {
+  const v = parseFloat(e.target.value);
+  if (!(v >= 0.5)) { e.target.value = state.interval; return; }
+  state.interval = v; store.set("interval", v);
+  if (!state.paused) refresh();
+};
+$("pause").onclick = () => {
+  state.paused = !state.paused;
+  syncControls();
+  state.paused ? clearTimeout(state.timer) : refresh();
+  if (state.snapshot) renderStatus();
+};
+$("map").onmouseleave = () => { state.hoverKey = null; };
+window.addEventListener("resize", () => render());
+
+syncControls();
+refresh();
+</script>
+</body>
+</html>
