@@ -2,13 +2,13 @@ import Testing
 
 @testable import MemmapCore
 
-private func leafPids(_ node: TreeNode) -> [Int32] {
+func leafPids(_ node: TreeNode) -> [Int32] {
   guard node.children.isEmpty else { return node.children.flatMap(leafPids) }
   guard let pid = node.id.split(separator: ":").last.flatMap({ Int32($0) }) else { return [] }
   return [pid]
 }
 
-private func expectEachPidOnce(_ tree: TreeNode, _ recs: [ProcessRecord]) {
+func expectEachPidOnce(_ tree: TreeNode, _ recs: [ProcessRecord]) {
   #expect(leafPids(tree).sorted() == recs.map(\.pid).sorted())
 }
 

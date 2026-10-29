@@ -2,14 +2,16 @@
 
 memmap is a macOS app that draws per-process memory as a treemap. Related processes are grouped together, so you can see which app or process tree is using memory right now.
 
+![memmap showing per-process memory as a treemap](docs/screenshot.png)
+
 ## Download
 
 Each [release](https://github.com/thehesiod/memmap/releases) has a zipped `memmap.app`. Unzip it and move it to `/Applications` or `~/Applications`.
 
-The app is signed ad hoc and not notarized, so macOS blocks it the first time. Right-click it and choose Open, or clear the quarantine flag:
+The app is signed ad hoc and not notarized, so the first time you open it macOS refuses with "Apple could not verify 'memmap' is free of malware". To allow it, open System Settings › Privacy & Security, scroll to the message about memmap, and click Open Anyway. Or remove the quarantine flag from the whole bundle:
 
 ```sh
-xattr -d com.apple.quarantine /Applications/memmap.app
+xattr -dr com.apple.quarantine /Applications/memmap.app
 ```
 
 ## Build and install
