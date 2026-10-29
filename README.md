@@ -47,14 +47,9 @@ The original version is still in the repository. It serves the same view to a br
 ./memmap.py
 ```
 
-## Releasing
+## Contributing
 
-Pushing a tag that starts with `v` runs the release workflow. It tests, builds `memmap.app`, and attaches `memmap-<tag>.zip` to a new GitHub release:
-
-```sh
-git tag -s v0.1.0 -m "memmap 0.1.0"
-git push origin v0.1.0
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
