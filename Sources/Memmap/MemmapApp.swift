@@ -20,6 +20,12 @@ struct MemmapApp: App {
         .task { delegate.model.start() }
     }
     .defaultSize(width: 1200, height: 800)
+    .commands {
+      CommandGroup(after: .toolbar) {
+        Button("Refresh Now") { delegate.model.refreshNow() }
+          .keyboardShortcut("r")
+      }
+    }
   }
 }
 

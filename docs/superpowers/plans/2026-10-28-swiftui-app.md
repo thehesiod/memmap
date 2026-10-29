@@ -21,8 +21,8 @@
 - Command lines truncated to 4,000 characters.
 - Bundle ID `io.github.thehesiod.memmap`; app name `memmap`.
 - No employer- or user-specific names, paths, or data anywhere, including fixtures. Fixtures use names like `Example.app`, `/Users/example/project`.
-- Test command for every task: `swift test` from the repo root (`~/dev/memmap`). Expected tail: `Test run with N tests … passed`.
-- Commits end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Work on branch `amohr/swiftui-app`.
+- Test command for every task: `swift test` from the repository root. Expected tail: `Test run with N tests … passed`.
+- Commits end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
 ## Review Focus
 

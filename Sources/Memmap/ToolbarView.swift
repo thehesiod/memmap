@@ -84,7 +84,9 @@ struct ToolbarView: View {
       "swap \(formatBytes(sys.swapUsed)) of \(formatBytes(sys.swapTotal))",
       "\(snapshot.processes.count) procs",
     ]
-    if model.mode == .sharedSplit { parts.append("\(snapshot.inspected) inspected") }
+    if model.mode == .sharedSplit {
+      parts.append(snapshot.inspected > 0 ? "\(snapshot.inspected) inspected" : "collecting…")
+    }
     parts.append("\(Int(snapshot.collectedIn / .milliseconds(1))) ms")
     if model.paused { parts.append("paused") }
     return parts.joined(separator: " · ")

@@ -55,7 +55,7 @@ struct TreemapView: View {
   var body: some View {
     GeometryReader { geo in
       let placed = layoutTreemap(focus, in: CGRect(origin: .zero, size: geo.size))
-      let style = BoxStyle(placed: placed, focus: focus, mode: model.mode)
+      let style = BoxStyle(placed: placed, focus: focus, showUninspected: model.mode == .sharedSplit && (model.snapshot?.inspected ?? 0) > 0)
       let hoverKey = model.navigation.hoverKey
       let pinnedKey = model.navigation.pinnedKey
       Canvas { context, _ in
@@ -93,11 +93,11 @@ private struct BoxStyle {
   let placed: [PlacedNode]
   let fills: [Color]
   let counts: [String: Int]
-  let mode: Mode
+  let showUninspected: Bool
 
-  init(placed: [PlacedNode], focus: TreeNode, mode: Mode) {
+  init(placed: [PlacedNode], focus: TreeNode, showUninspected: Bool) {
     self.placed = placed
-    self.mode = mode
+    self.showUninspected = showUninspected
     var hues: [String: Int] = [:]
     for node in placed where node.depth == 1 { hues[node.key] = hues.count % palette.count }
     fills = placed.map { node in
@@ -134,7 +134,7 @@ private struct BoxStyle {
         addHatch(to: &hatchLines, covering: band)
       }
 
-      if mode == .sharedSplit, !node.isGroup, let record = node.record, record.split == nil {
+      if showUninspected, !node.isGroup, let record = node.record, record.split == nil {
         context.stroke(
           Path(r.insetBy(dx: 3.5, dy: 3.5)), with: .color(.black.opacity(0.5)),
           style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
