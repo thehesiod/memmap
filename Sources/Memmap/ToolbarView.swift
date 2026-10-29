@@ -2,8 +2,6 @@ import AppKit
 import MemmapCore
 import SwiftUI
 
-private let intervalRange = 0.5...3600.0
-
 struct ToolbarView: View {
   @Bindable var model: AppModel
 
@@ -42,7 +40,7 @@ struct ToolbarView: View {
         Text("Refresh every")
         IntervalField(value: $model.interval)
           .frame(width: 56)
-        Stepper("Interval", value: $model.interval, in: intervalRange, step: 0.5)
+        Stepper("Interval", value: $model.interval, in: refreshIntervalRange, step: 0.5)
           .labelsHidden()
         Text("s")
       }
@@ -97,24 +95,22 @@ private struct IntervalField: NSViewRepresentable {
   @Binding var value: Double
 
   func makeNSView(context: Context) -> NSTextField {
-    let formatter = NumberFormatter()
-    formatter.numberStyle = .decimal
-    formatter.minimum = NSNumber(value: intervalRange.lowerBound)
-    formatter.maximum = NSNumber(value: intervalRange.upperBound)
-    formatter.maximumFractionDigits = 3
-    let field = NSTextField()
-    field.formatter = formatter
+    let field = NSTextField(string: formatRefreshInterval(value))
     field.alignment = .right
     field.bezelStyle = .roundedBezel
-    field.target = context.coordinator
-    field.action = #selector(Coordinator.commit(_:))
+    field.delegate = context.coordinator
     field.toolTip = "Seconds between refreshes, 0.5 to 3600"
+    context.coordinator.shown = value
     return field
   }
 
   func updateNSView(_ field: NSTextField, context: Context) {
-    context.coordinator.value = $value
-    if field.currentEditor() == nil { field.doubleValue = value }
+    let coordinator = context.coordinator
+    coordinator.value = $value
+    guard coordinator.shown != value else { return }
+    coordinator.shown = value
+    field.stringValue = formatRefreshInterval(value)
+    field.currentEditor()?.string = field.stringValue
   }
 
   func sizeThatFits(_ proposal: ProposedViewSize, nsView field: NSTextField, context: Context) -> CGSize? {
@@ -123,14 +119,25 @@ private struct IntervalField: NSViewRepresentable {
 
   func makeCoordinator() -> Coordinator { Coordinator(value: $value) }
 
-  @MainActor final class Coordinator: NSObject {
+  @MainActor final class Coordinator: NSObject, NSTextFieldDelegate {
     var value: Binding<Double>
+    var shown: Double?
 
     init(value: Binding<Double>) { self.value = value }
 
-    @objc func commit(_ sender: NSTextField) {
-      let v = sender.doubleValue
-      if intervalRange.contains(v) { value.wrappedValue = v } else { sender.doubleValue = value.wrappedValue }
+    func controlTextDidChange(_ notification: Notification) {
+      guard let field = notification.object as? NSTextField, let parsed = parseRefreshInterval(field.stringValue) else { return }
+      shown = parsed
+      value.wrappedValue = parsed
+    }
+
+    func controlTextDidEndEditing(_ notification: Notification) {
+      guard let field = notification.object as? NSTextField else { return }
+      if let parsed = parseRefreshInterval(field.stringValue) {
+        shown = parsed
+        value.wrappedValue = parsed
+      }
+      field.stringValue = formatRefreshInterval(value.wrappedValue)
     }
   }
 }
