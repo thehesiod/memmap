@@ -20,6 +20,10 @@ swift test
 
 Test fixtures use placeholder names such as `Example.app` and `/Users/example/project`. Never put real usernames, paths, or process data in the repository.
 
+## Screenshot
+
+The README screenshot uses made-up data. To regenerate it, build with `scripts/bundle.sh` and run `MEMMAP_DEMO=1 ./memmap.app/Contents/MacOS/memmap`, which shows the fixed snapshot from `Sources/MemmapCore/Demo.swift` instead of the real processes.
+
 ## Pull requests
 
 `main` accepts changes only through pull requests:

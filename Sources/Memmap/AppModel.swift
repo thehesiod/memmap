@@ -52,6 +52,7 @@ final class AppModel {
 
   @ObservationIgnored private let defaults: UserDefaults
   @ObservationIgnored private let collector = Collector()
+  @ObservationIgnored private let demo = ProcessInfo.processInfo.environment["MEMMAP_DEMO"] == "1"
   @ObservationIgnored private var loop: Task<Void, Never>?
   @ObservationIgnored private var sleepTask: Task<Bool, Never>?
   @ObservationIgnored private var wakeRequested = false
@@ -88,7 +89,7 @@ final class AppModel {
   private func refreshOnce() async {
     wakeRequested = false
     do {
-      let next = try await collector.collect(split: mode == .sharedSplit)
+      let next = demo ? Demo.snapshot() : try await collector.collect(split: mode == .sharedSplit)
       snapshot = next
       lastError = nil
       rebuild(resetBaseline: false)

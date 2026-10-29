@@ -5,6 +5,13 @@ import SwiftUI
 struct ToolbarView: View {
   @Bindable var model: AppModel
 
+  private var compressedToggle: some View {
+    Toggle("Include compressed", isOn: compressedBinding)
+      .toggleStyle(.checkbox)
+      .disabled(model.mode == .footprint)
+      .fixedSize()
+  }
+
   var body: some View {
     ToolbarFlow(spacing: 14, rowSpacing: 6) {
       Picker("Mode", selection: $model.mode) {
@@ -17,11 +24,11 @@ struct ToolbarView: View {
       .labelsHidden()
       .fixedSize()
 
-      Toggle("Include compressed", isOn: compressedBinding)
-        .toggleStyle(.checkbox)
-        .disabled(model.mode == .footprint)
-        .help(model.mode == .footprint ? "Footprint already includes compressed memory" : "")
-        .fixedSize()
+      if model.mode == .footprint {
+        compressedToggle.help("Footprint already includes compressed memory")
+      } else {
+        compressedToggle
+      }
 
       HStack(spacing: 6) {
         Text("Group by")
